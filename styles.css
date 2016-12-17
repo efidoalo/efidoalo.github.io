@@ -1,0 +1,37 @@
+nput.decade_selector1, input.decade_selector2,
+input.year_selector1, label.year_selector1,
+input.month_selector_2016, label.month_selector_2016,
+div.Dec2016_Projects,
+input.month_selector_2017, label.month_selector_2017,
+div.Jan2017_Projects,
+input.decade_selector1:not(:checked) ~ [id^="year_2016"]:checked ~ label.month_selector_2016,
+input.decade_selector1:not(:checked) ~ [id^="year_2017"]:checked ~ label.month_selector_2017,
+[id^="year_2016"]:not(:checked) ~ input.month_selector_2016:checked + label + div,
+input.decade_selector1:not(:checked) ~ [id^="year_2016"]:checked ~ input.month_selector_2016:checked + label + div,
+[id^="year_2017"]:not(:checked) ~ input.month_selector_2017:checked + label + div,
+input.decade_selector1:not(:checked) ~ [id^="year_2017"]:checked ~ input.month_selector_2017:checked + label + div
+{
+  display :none;
+}
+
+input.decade_selector1:checked ~ label.year_selector1
+{
+  display: block;
+  margin-left: 20px;
+}
+
+[id^="year_2016"]:checked ~ label.month_selector_2016,
+[id^="year_2017"]:checked ~ label.month_selector_2017
+{
+  display: block;
+  margin-left: 40px;
+}
+
+[id^="December_2016"]:checked ~ div.Dec2016_Projects,
+[id^="January_2017"]:checked ~ div.Jan2017_Projects
+{
+  display: block;
+  margin-left: 80px;
+}
+
+

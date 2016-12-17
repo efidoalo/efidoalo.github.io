@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>http web server interaction - web page retrieval</title>
+    <link href="projects_style.css" type="text/css" rel="stylesheet" />
+  </head>
+  <body>
+  <div id="header">
+    <h3 id="Title">Web server communication on port 80 (http) - fetching a web 
+                   page using a linux implementation of BSD sockets and the C 
+                   programming language</h3>
+    <span id="project_code"> <a href="https://github.com/efidoalo/web-page-retrieval" target="_blank">github repository</a> </span>
+  </div>
+  <div id="Outline" class="Section">
+    <p id="Outline_title">Project Outline</p>
+    <p>Using the BSD sockets implementation housed within a linux kernel (4.8.1-040801-generic),
+       I wanted to write a program that would convert an arbitrary website domain name to the corresponding hosting web-servers
+       IPv4 address and (attempt to) establish a connection via IPv4/TCP on port number 80 on the server. Once a connection
+       has been established, get request messages can be sent to the server using the http protocol to obtain the accessible web 
+       pages of interest. Throughout the program, during every (BSD sockets) API call, relevant error codes are checked and 
+       appropriate output to the terminal is produced on error. The potential scope of the program goes beyond singular web-page 
+       retreival and corresponding html inspection, due to the nature of the http protocol it is possible to send a wide variety 
+       of messages and thus gain information to understand the structure of the web server system that hosts the site.
+    </p>
+  </div>
+
+  <div id="Discussion" class="Section">
+    <p id="Discussion_title">Discussion</p>
+      <div id="sockets_api_basics"> 
+        <p id="implementation_title" >Linux BSD sockets API - fundamental basics</p>
+        <p>The networking software within the linux kernel includes an implementation of the BSD sockets API which can be used 
+           directly from within a C program after including the relevant header files. This section details some of the basic system
+           calls supported by the API and explains relevant terminology.</p>
+        <p id="connection_endpoint">A socket is a network connection endpoint handle in the form of an integer. A IPv4/TCP connection 
+           endpoint is identified
+           by the network layer protocol address and transport layer protocol address of one end of a connection, whereby the
+           network and transport layer protocols are understood to be Internet Protocol version 4 (IPv4) and the Transmission 
+           Control Protocol (TCP).  
+           A IPv4 client-server connection as a whole may be defined as the quintuple (transport layer protocol, 
+           client IPv4 address, client transport layer protocol address, server IPv4 Address, server transport layer protocol address), 
+           wherey for our case the transport layer protocol is TCP (as opposed to UDP or some other transport layer protocol).
+        </p>
+        <p id="socket_call">
+           The network layer protocol and transport layer protocol of a connection endpoint can be specified by an API function call
+           called socket(), the syntax for this function are shown below: </p>
+        <p class="code_segment">
+          <span class="type">int</span> socket(<span class="type">int</span> domain, <br />
+             &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                               <span class="type">int</span> type, <br />
+             &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                              <span class="type">int</span> protocol);<br />
+        </p>
+        <p>The above socket() call creates a socket handle/file descriptor and returns its value, this value is used to identify the
+           (network layer protocol, type, transport layer protocol) triple that is specified with the input arguements. This triple can
+           then be later "binded" to corresponding addressing information to define a connection endpoint. The domain input arguement 
+           specifies the network layer protocol to be used, and is set to AF_INET to define IPv4. The type input argument specifies the 
+           type of socket/triple to be created (different types of sockets are used to support different transport layer protocols), 
+           in order to obtain a TCP capable socket this value must be set to SOCK_STREAM. The protocol
+           input arguement defines the transport layer protocol to be used, whereby a value of 0 correpsponds to the specification of the  
+           TCP protocol. For more information regarding this call see the socket(2) Linux man page. </p>   
+        <p id="struct_sockaddr">In order to store endpoint address details, the sockaddr struct is used which is shown below: </p>
+        <p class = "code_segment"> 
+          <span class="type">struct</span> sockaddr { <br />
+           &nbsp;&nbsp; <span class="type">unsigned short</span> &nbsp; sa_family; <span class="comment">// address family, 
+                                                                                                                 AF_xxx </span> <br />
+           &nbsp;&nbsp; <span class="type">char</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; sa_data[14];
+                        <span class="comment">// 14 bytes of protocol address</span> <br />
+          };
+        </p>
+        <p>sa_family is a two byte unsigned integer that defines the newtork layer protocol address family, in our case we specify this field
+           to be AF_INET to indicate that our connection endpoint network layer addresses will be IPv4 addresses. The first two bytes of 
+           sa_data define the TCP port number, or equivalently TCP protocol address, where the port number is stored in big endian byte order (which is also referred to as network byte order). The next four bytes are then used to store the IPv4 address as an unisgned integer
+         and the remaining (8) bytes are set to zero. In order to obtain the IPv4 address of the web server that stores and serves a particular         web-page, we can use an API call that takes as an input arguement the domain name of the website that we wish to retreive and 
+         (via DNS) returns a unidirectional linked list of address information structures that each give the address information of a server
+         that serves the web-page given by the specified domain name. </p>
+         <p id="struct_addrinfo">The struct called addrinfo is used to store the server address information corresponding to a 
+           particular domain name, this struct is shown below: </p>
+         <p class="code_segment">
+           <span class="type">struct</span> addrinfo { <br />
+             &nbsp;&nbsp;  <span class="type">int</span>  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ai_flags;  <br />
+             &nbsp;&nbsp;   <span class="type">int</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ai_family;<br />
+             &nbsp;&nbsp;   <span class="type">int</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ai_socktype;<br />
+             &nbsp;&nbsp;   <span class="type">int</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;    ai_protocol;<br />
+             &nbsp;&nbsp;   <span class="type">socklen_t</span>   &nbsp;&nbsp;&nbsp;&nbsp;  ai_addrlen;<br />
+             &nbsp;&nbsp;   <span class="type">struct</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  sockaddr *ai_addr;<br />
+             &nbsp;&nbsp;   <span class="type">char</span>   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  *ai_canonname;<br />
+             &nbsp;&nbsp;   <span class="type">struct</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  addrinfo *ai_next;<br />
+           };
+         </p>
+         <p>ai_flags is used to specify additional options, ai_family specifies the network protocol used and thus determines 
+             the address type (ai_family has a value of AF_INET to specify IPv4), ai_socktype specified the socket type and can 
+             be set so that the socket supports specific transport layer protocols (this member should be set to SOCK_STREAM to
+             allow for a TCP capable endpoint), ai_protocol specifies the transport layer protocol to be used and a value of
+             IPPROTO_TCP should be used to specify the TCP protocol (Transmission Control Protocol), ai_addrlen is simply the length
+             of the sockaddr structure and so has a value of sizeof(struct sockaddr), ai_addr is a pointer to the socket address information
+             (Network layer protocol (IPv4), Network layer protocol address (IPv4 addr), transport layer  protocol address (TCP port number))
+             , the ai_canonname member gives the official name of the host and ai_next is a pointer to the next addrinfo structure 
+             in the linked list. </p>
+          <p id="getaddrinfo"> 
+             In order to obtain the address information of a web server that hosts the website that we wish to retrieve, we call the
+             getaddrinfo() API function which has the following syntax:</p>
+          <p class="code_segment">
+            <span class="type">int</span>  getaddrinfo(<span class="type">const char</span> *node, <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+                                                               <span class="type">const char</span> *service, <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;                                                                          <span class="type">const struct</span> addrinfo *hints, <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                                               <span class="type">struct</span> addrinfo **res);
+          </p>
+          <p>The input arguement node is a null terminated string that specifies the domain name of the website that we wish to retrieve
+             a page from. The service input arguement is a null terminated string that specifies the service that is provided from the 
+             internet host/web server, or equivalently a port number. Since we wish to send and retrieve messages using the http protocol, 
+             the serevice string has a value of either "http" or "80", since the TCP port 80 is the recognised TCP port for http. The hints
+             input arguement is a pointer to a addrinfo struct, such that any member of this struct that does not have a zero value specfies
+             a requirement that every endpoint in the returned linked list must adhere to. Since we are only interested in internet hosts
+             that are IPv4 and TCP capable, that also can communicate with other machines using the http protocol, we may provide the address
+             of a addrinfo struct whose members are all zero valued apart from the ai_family, ai_sockytype, and ai_protocol members whose 
+             values are AF_INET, SOCK_STREAM, and IPPROTO_TCP. This ensures that all endpoints returned in the linked list can be connected
+             to using IPv4/TCP, combined with the service arguement we ensure that all endpoints can be connected to on port 80 as well
+             so that any internet host having an endpoint in the returned linked list will be able to serve the website using IPv4/TCP/http.
+             Finally, we supply the address of a pointer to an addrinfo struct, this struct is filled during the call to getaddrinfo to form
+             the unidirectional linked list of endpoints that serve the website specified by the node arguement. If multiple endpoints are
+             returned in the linked list by getaddrinfo, then an application should use the endpoints in order of the returned lists ordering.
+             For more information on the getadrinfo call (include error reporting return values) see the linux man page getaddrinfo(3).
+          </p>
+          <p id="bind">
+             The socket(int domain, int type, int protocol) API system call returned an (integer) handle to a socket that supports the  
+             specified network layer protocol, socket type, and transport layer protocol. Note that this call does not specify the network
+             layer protocol address or transport layer protocol address of the endpoint. To do this we must make another call using the 
+             BSD sockets API, this call is called bind() and its syntax are shown below:</p>
+          <p class = "code_segment">
+            <span class="type">int</span> bind(<span class="type">int</span> sockfd, <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="type">const struct</span> sockaddr *addr, <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="type">socklen_t</span> addrlen); <br />
+          </p>          
+          <p> The sockfd integer input arguement specifies the socket file descriptor that was returned by a previous call to socket().
+             The addr input arguement specifies the address of the sockaddr struct that specifies the endpoint address information 
+             (at both the network layer and transport layer) that we wish to associate with the socket given by the handle (file descriptor)
+             sockfd. The addrlen input arguement is simply the length (in bytes) of the sockaddr struct, and thus has the integer value
+             equal to sizeof(struct sockaddr). If this function call is successful then the socket defined by the sockfd handle now has 
+             the address information given by the arguement addr associated with it, so that the socket with handle sockfd now defines an 
+             endpoint since it has precise address information as well as general protocol information. The integer return value of bind() 
+             is purely for error detection, where a value of zero indicates success and a value of -1 indictes that an error was encountered 
+             during the call. See the linux man page bind(2) for more details. 
+          </p>
+          <p id="connect">
+             In order to connect to the remote machine endpoint via IPv4/TCP, we can call the connect() BSD sockets API function that allows
+             us to connect an existing socket that has been binded to the local machine (via specifying its IPv4 address and a port number
+             within the bind() call). The syntax of the connect() function is shown below:
+          </p>
+          <p class="code_segment"> <span class="type">int</span> connect(<span class="type">int</span> sockfd, <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                                    <span class="type">const struct</span> sockaddr *addr, <br />
+               &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                                    <span class="type">socklen_t</span> addrlen); <br />
+          </p>
+          <p>For our purposes, since we wish to connect to an internet host (web server machine) via IPv4/TCP:80, the sockfd input 
+             arguement is a file descriptor that refers to an IPv4/TCP capable socket that has been binded to a TCP port and IPv4 address
+             of the local machine. The addr input arguement is a pointer to a sockaddr structure that contains the (network and transport 
+             layer) address of the remote machine that we wish to connect to, and the addrlen input argument defines the length (in bytes) 
+             of the sockaddr structure used to store the remote machines address data, and thus is simply the integer value 
+             sizeof(struct sockaddr). The return value is used for error detection purposes, with zero correspondibng to success and -1 to
+             indicate that an error occured during the functuon call. For details on exactly how IPv4/TCP connections are established, and 
+             how packets are routed between the client and server machines, see (<a href="https://www.amazon.co.uk/TCP-IP-Illustrated-Protocols-APC/dp/0201633469" target="_blank">TCP/IP Illustrated Volume 1 (opens in new window)</a>). For useful details regarding the connect() 
+             API call, see the Linux man page connect(2).  
+          </p>
+          <p id="send_recv">
+             Once a connection has been made between the client and server machines, the send() and recv() API function calls can be used 
+             to send and receive TCP payload data. Since the client and server machines are communicating using the http protocol, the TCP 
+             payload must adhere to the http application level protocol. The TCP protocol guarantees error free message delivery, regardless 
+             of weather the size of the message is exceeds a link, network, or transport layer protocol limit or the buffer size of the 
+             socket in question. A result of this is that the socket may block whilst it successfully transmits the message via multiplexing.
+             To fully use recv() and send() a good understanding of the underlying protocols (IP/TCP) is required. We do not wish to go in to
+             detail here describing these protocols, the information can be found in the book shown in the link located in the preceding 
+             paragraph. We show the syntax of the send() and recv() API functions below:
+          </p>
+          <p class="code_segment">
+            <span class="type">ssize_t</span> send(<span class="type">int</span> sockfd,<br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                                   <span class="type">const void</span> *buf, <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                                   <span class="type">size_t</span> len, <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                                   <span class="type"> int</span> flags); <br />
+            <br />
+            <br />
+            <span class="type">ssize_t</span> recv(<span class="type">int</span> sockfd,<br /> 
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+                                                   <span class="type">const void</span> *buf, <br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                                   <span class="type">size_t</span> len, <br /> 
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+                                                   <span class="type"> int</span> flags); <br />
+          </p> 
+          <p>We can see that the input arguements are identical for both the send() and recv() BSD socket API calls. The integer sockfd
+             is a file descriptor (handle) to the local (connected) socket that we wish to either send information on or receive informatioin 
+             from. The buf input arguement is the address of the message buffer. In the case of the send call, buf is the address of the 
+             TCP payload of the message that we wish to send. In the case of the receive call, buf is the address of the block of memory
+             that will hold the TCP payload of the message that is currently stored in the local sockets buffer. The len input arguement refers
+             to the number of bytes to be sent when calling send(), and refers to the length of the buf memory block (in bytes) when calling
+             recv(). The flags input arguement is used to set additional send and receive options, see the linux man pages for more details. 
+             Both the send and recv calls return an integer value and this value refers to the number of bytes that have been
+             sent or received as a result of the system call.
+           </p>
+      </div>
+      <div id="the_program">
+         <p id="using_sockets_title">Using the Linux BSD sockets API - establishing a connection with the  server machine 
+                                     and web page retrieval via http </p>
+         <p>In order to establish a connection between the local machine and remote server machine, the system call connect() (
+            <a href="#connect">connect() system call syntax</a>) is required that takes as input both connection endpoints (
+              local and remote server machine). The endpoint given to connect that refers to the local machine endpoint 
+              is given as the file descriptor of a socket that has previously been bound to the local machine. The input 
+              arguement of connect() that refers to the remote server machine connection endpoint is given as the members of 
+              a sockaddr structure. We first create the client/local machine endpoint, and thus first make a call to socket(),
+              specifying input arguements that will allow for a IPv4/TCP capable local machine endpoint. The socket() call would 
+              therefore be:  
+         </p> 
+         <p class="code_segment">
+           clientsock_fd = socket(AF_INET, SOCK_STREAM, 0);
+         </p>
+         <p>If the returned value of clientsock_fd is -1, this indicates that an error occured during the call. Error specific information
+            can then be found by checking the value of errno, which is a predefined variable defined within the header file "errno.h" and is
+            used to report error information. The socket() call on error sets the errno value to indicate the type of error that occured. 
+            See the linux socket(2) man page for a list of these errno values and their meanings.
+         </p>
+         <p>We specify the address information of the local machine connection endpoint using a struct called sockaddr_in : </p>
+         <p class="code_segment">
+           <span class="type">struct</span> sockaddr_in { <br />
+           &nbsp;&nbsp; <span class="type">short</span> 
+           &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                                        sin_family; <span class="comment">   // e.g. AF_INET</span> <br />
+           &nbsp;&nbsp; <span class="type">unsigned short</span> &nbsp;&nbsp;  sin_port; <span class="comment">// e.g. htons(3490)</span><br/>           &nbsp;&nbsp; <span class="type">struct</span> in_addr &nbsp;&nbsp;  sin_addr; <br />
+           &nbsp;&nbsp; <span class="type">char</span>  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                       sin_zero[8]; <span class="commnet">// zero this if you want to</span> <br />
+           }; <br />
+        </p>
+        <p>The sin_family member refers to the network layer protocol, sin_port defines the port number of the endpoint, sin_addr the 
+           IPv4 address of the endpoint, and the sin_zero array is all zeros. The TCP port number of the client machine is stored in the
+           sin_port member in network byte order. The IPv4 address of the local machine must be stored in network byte order in the sin_addr #            member in network byte order, this can be done via a system call called inet_aton(), see 
+           (<a href="http://man7.org/linux/man-pages/man3/inet_addr.3.html" target="_blank">inet_aton() man page</a>). A pointer to a 
+           sockaddr_in struct may be cast to a pointer to a sockaddr struct. So that, if we filled a sockaddr_in struct called clientaddr
+           with the local machine endpoint address information, we can then bind this address information to the clientsock_fd socket
+           using the following call: 
+        </p> 
+        <p class="code_segment">
+           bind(clientsock_fd, (<span class="type">struct</span> sockaddr *)&clientddr, <br />
+             &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  <span class="keyword">sizeof</span>(<span class="type">struct</span> sockaddr)); <br />
+        </p>
+        <p>Assuming this call does not fail, ie a non-negative value is returned, then the clientsock_fd socket now refers to the 
+           local machine endpoint.
+        </p>
+        <p>If we declare an addrinfo struct called hints and set all of its members to zero, apart from the ai_family, ai_socktype, 
+           and ai_protocol members which are initialized to AF_INET, SOCK_STREAM, and IPROTO_TCP values respectvely. Then we may use                      the following call to getaddrinfo to obtain a linked list of server machine endpoints that store the web site we wish to retrieve.
+           Let host be a null terminated string giving the domain name of the website we wish to retrieve a page from, and let res be the
+           address if an addrinfo struct pointer.
+        </p>
+        <p class="code_segment">
+           getaddrinfo(host, "http", &hints, &res);
+        </p>           
+        <p>If zero is returned the above call has succeeded, any other return value indicates an error. Assuming a successful call,
+           res points to a linked list of server machine endpoints, and we can use the first entry in this list during the call to connect().
+           Recall that clientsock_fd was the socket file descriptor refering to the local client machine endpoint. Then the following call
+           establishes a connection between the local client machine and the web server machine given by the endpoint information in the first
+           entry of the linked list returned by getaddrinfo. </p>
+        <p class="code_segment">
+          connect(clientsock_fd, res->ai_addr,sizeof(struct sockaddr));
+        </p>
+        <p>connect() returns an integer value of zero if the call succeeded and a value of -1 if an error occured. If the call was made 
+           successfully then the local client machine and server are connected via the Ipv4/TCP protocols and http messages can now be sent 
+           and received.
+        </p>
+        <p>We do not wish to provide a detailed http reference. To retrieve a file from the web server, we send a message
+           with the following TCP payload ""GET" "Uniform Resource Locator" "HTTP version"\r\n\r\n". For example, if we wished to obtain the
+           file with URL (relative to the web servers root directory) /index.html, using http version 1.1, the TCP payload of the message
+           sent to the server would be the string "GET /index.html HTTP/1.1\r\n\r\n". Suppose buf was the name of a character array that is
+           used for the message buffer, then the following call would send the above message from the connected 
+           client endpoint with socket file descriptor clientsock_fd to the server machine:
+        </p>
+        <p class="code_segment">
+        <span class="type">const char</span> *serverOPTS = <span class="value">"GET /index.html HTTP/1.1\r\n\r\n"</span>; <br />
+          send(clsock_fd, memcpy(buf, serverOPTS, strlen(serverOPTS)), strlen(serverOPTS), 0)); <br />
+        </p>
+        <p>The functions memcpy and strlen are standard C functions, look these definitions up if you are not sure of them. Depending on the
+           length of the html web page that is requested, in order to obtain the full response message from the web server more than one
+           call of recv() may be required. We show below part of a  web servers http response message, the web page requested (<a href="http://www.lysator.liu.se/c/pikestyle.html" target="_blank">Notes on Programming in C</a>) is shown in the http message body and is not shown here in full due to its length: 
+        </p>   
+        <p class="code_segment">
+          HTTP/1.1 200 OK <br />
+          Server: nginx/1.6.2 <br />
+          Date: Fri, 16 Dec 2016 14:06:14 GMT <br />
+          Content-Type: text/html; charset=iso-8859-1 <br />
+          Content-Length: 20533<br />
+          Connection: keep-alive <br /> 
+          Accept-Ranges: bytes <br />
+          Vary: accept-encoding  <br />
+          <br />
+          &lt;html&gt;  <br />
+&lt;head&gt;&lt;title&gt;Rob Pike: Notes on Programming in C&lt;/title&gt; <br />
+&lt;link rev="made" rel="made" href="mailto:jutta@pobox.com"&gt; <br />
+&lt;/head&gt; <br />
+&lt;body&gt; <br />
+&lt;ul&gt;&lt;ul&gt; <br /> 
+&lt;h1&gt;Notes on Programming in C&lt;/h1&gt; <br />
+&lt;/ul&gt;&lt;/ul&gt; <br />
+&lt;ul&gt;&lt;ul&gt;&lt;ul&gt;&lt;ul&gt;&lt;address&gt; <br />
+&#160;&lt;tt&gt; &lt;/tt&gt;&#160;&lt;tt&gt; &lt;/tt&gt;&lt;a href="rob/index.html"&gt;Rob Pike&lt;/a&gt;&lt;br&gt; <br />
+&lt;/address&gt;&lt;/ul&gt;&lt;/ul&gt;&lt;/ul&gt;&lt;/ul&gt;<br />
+&lt;ul&gt;&lt;ul&gt;&lt;ul&gt;&#160;&lt;tt&gt; &lt;/tt&gt;&#160;&lt;tt&gt; &lt;/tt&gt;&#160;&lt;tt&gt; &lt;/tt&gt;&#160;&lt;tt&gt; &lt;/tt&gt; <br />
+February 21, 1989 <br />
+&lt;/ul&gt;&lt;/ul&gt;&lt;/ul&lt;/ul&gt; <br />
+&lt;h2&gt;Introduction&lt;/h2&gt; <br />
+<br />
+&#160;&lt;tt&gt; &lt;/tt&gt;&#160;&lt;tt&gt; &lt;/tt&gt;&#160;&lt;tt&gt; &lt;/tt&gt;Kernighan and Plauger's <br />
+&lt;a href="c-faq/index.html#EoPS"&gt;&lt;i&gt;The Elements of Programming Style&lt;/i&gt;&lt;/a&gt; <br />
+was an important and rightly influential book.&#160;&lt;tt&gt; &lt;/tt&gt;But <br />
+sometimes I feel its concise rules were taken as a cookbook <br />
+approach to good style instead of the succinct expression of <br />
+a philosophy they were meant to be.&#160;&lt;tt&gt; &lt;/tt&gt;If the book claims that <br />
+variable names should be chosen meaningfully, doesn't it <br />
+then follow that variables whose names are small essays on <br />
+their use are even better?&#160;&lt;tt&gt; &lt;/tt&gt;Isn't&lt;code&gt; MaximumValueUntilOverflow &lt;/code&gt; <br />
+a better name than&lt;code&gt; maxval&lt;/code&gt;?&#160;&lt;tt&gt; &lt;/tt&gt;I don't think so. <br />
+&lt;p&gt; <br />
+&#160;&lt;tt&gt; &lt;/tt&gt;&#160;&lt;tt&gt; &lt;/tt&gt;&#160;&lt;tt&gt; &lt;/tt&gt;What follows is a set of short essays that collectively <br />
+encourage a philosophy of clarity in programming rather than <br />
+giving hard rules.&#160;&lt;tt&gt; &lt;/tt&gt;I don't expect you to agree with all of <br />
+them, because they are opinion and opinions change with the <br />
+times.&#160;&lt;tt&gt; &lt;/tt&gt;But they've been accumulating in my head, if not on  <br />
+paper until now, for a long time, and are based on a lot of<br />
+experience, so I hope they help you understand how to plan <br />
+the details of a program.&#160;&lt;tt&gt; &lt;/tt&gt;(I've yet to see a good essay on  <br />
+how to plan the whole thing, but then that's partly what<br />
+this course is about.)&#160;&lt;tt&gt; &lt;/tt&gt;If you find them idiosyncratic, <br />
+fine; if you disagree with them, fine; but if they make you <br />
+think about why you disagree, that's better.&#160;&lt;tt&gt; &lt;/tt&gt;Under no <br />
+circumstances should you program the way I say to because I say <br />
+to; program the way you think expresses best what you're <br />
+trying to accomplish in the program.&#160;&lt;tt&gt; &lt;/tt&gt;And do so consistently <br />
+and ruthlessly. <br />
+&lt;p&gt; <br /> 
+<br />
+       </p>
+       <p>The code used to receive and display the above http web server message response can be found in the 
+          <a href="http://google.com">github repository</a> for this project. As previously mentioned, the http protocol 
+          supports a wide variety of actions that can be used to discover details of the hosting web server as well as to 
+          retrieve individual web pages.
+       </p>                         
+      </div>
+  </div>
+ <!-- <div id="Comments" class="Section"> -->
+ <!-- <p id="comments_title">Comments</p> -->     
+ <!-- </div>                              -->
+   </div>
+  
+  <!--fixed positioned information and page navigation -->
+  <div id="fixed_positioned_panel">
+    
+    <a href="../index.html#Projects_List">Projects</a> <br />
+    <a href="https://github.com/efidoalo" target="_blank">Github Account</a> <br />
+    <a href="../CV/cv.html" target="_blank">CV</a> <br />
+   
+    <br /> <br />
+    <span>Email:  <a href="mailto:andyoldham1@hotmail.co.uk"><br />andyoldham1@hotmail.co.uk</a> </span>
+   
+    <br /> <br /> <br /> <br />
+     
+    <div id="navigation_pane">
+      <span>Navigate</span> <hr />
+      <a href="#Title">Title</a> <br />
+      <a href="#Project_Outline">Outline</a> <br />
+      <div id="disc_subpane">
+        <a id="Disc_Nav_Link" href="#Discussion">Discussion</a> <br />
+        <a id="sockets_API_Link" href="#sockets_api_basics">Linux sockets </a> <br />    
+        <a id="socket_call_link" href="#socket_call">socket()</a> <br />    
+        <a id="sockaddr_struct_link" href="#struct_sockaddr">struct sockaddr</a> <br />    
+        <a id="addrinfo_struct_link" href="#struct_addrinfo">struct addrinfo</a> <br />   
+        <a id="getaddrinfo_call_link" href="#getaddrinfo">getaddrinfo()</a> <br />
+        <a id="bind_call_link" href="#bind">bind()</a> <br />
+        <a id="connect_call_link" href="#connect">connect()</a> <br />
+        <a id="send_recv_calls_link" href="#send_recv">send() and recv()</a> <br />
+        <a id="http_comm_Link" href="#using_sockets_title">HTTP communication</a> <br />
+      </div> 
+      <!-- <a id="Comments_Nav_Link" href="#Comments">Comments</a> -->       
+    </div>
+  </div>
+  <!-- EOF fixed position information panel -->
+
+    
+
+  </body>
+</html>
+
