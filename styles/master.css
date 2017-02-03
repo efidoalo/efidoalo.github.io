@@ -72,8 +72,9 @@ input.decade_selector1:checked ~ label.year_selector1
 }
 
 #CVBody {
- padding-right: 100px;
- padding-left: 100px;
+ width: 900px;
+ margin-right: auto;
+ margin-left: auto;
 }
 
 
@@ -94,6 +95,7 @@ input.decade_selector1:checked ~ label.year_selector1
 
 .subsectiondetail {
   float: left;
+  width:550px; 
   margin-left: 20px;
 }
 
