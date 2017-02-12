@@ -130,16 +130,18 @@
                       <!--<a href="http://www.google.com" target="_blank">Project Discussion</a> (opens in new window)-->
                  </div>
 		       
-		 <div> <h3>Contacts Manager command line application built using C and PostgreSQL</h3>
-	              <p>A program developed for my own personal use to manage my personal contacts. A <br>
-                         PostgreSQL database was created called contacts that I can connect to from <br>
-                         the linux postgres account. A table called contact_data was created within this<br>
-                         database for the C program to interact with. The program reads commands from <br>
-                         the terminal and using simple syntax allows inserting, deleting, searching and <br>
-                         listing of contacts by their first and/or last names. Commands are read from <br>
-                         the terminal, parsed, and relevant PostgreSQL queries are executed using the <br>
-			 PostgreSQL C API library libpq. <br>
-                         <a href="https://github.com/efidoalo/contacts-manager" target="_blank">Github Project Repository</a> 
+		 <div> <h3>Data containers capable of holding general data types. Written using C.</h3>
+	              <p>Multiple header files, whereby each data structures implementation is contained <br>
+                         within its own seperate header file. Each data structure is designed to contain <br>
+                         one specific data type, that may be user defined or a built in type and whose size<br>
+                         in bytes is given during container initialization. Each container has an initialization <br> 
+			 function that must be called to allocated the appropriate amount of memory for the <br >
+			 data structure. General data types are supported within each container by use and <br >
+			 casting of void pointers. Current implemented data structures include a vector,  <br >
+			 unidirectional and bidirectional linked lists, and binary tree thay maintains its <br >
+			 balance on both insertion and deletion. Each data structure implementation also <br >
+			 contains a function to free all associated memory.                               <br>
+                         <a href="https://github.com/efidoalo/C-containers" target="_blank">Github Project Repository</a> 
                          (opens in new window) 
                       </p>
                       <!--<a href="http://www.google.com" target="_blank">Project Discussion</a> (opens in new window)-->
